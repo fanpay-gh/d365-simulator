@@ -1,0 +1,38 @@
+# Esquema de la entidad que emula el mock. Debe alinearse con lo que confirme el cliente:
+# nombres lógicos, obligatoriedad, longitudes y valores de los option sets.
+# Tipos: string | memo | optionset | boolean | datetime
+entity:
+  entity_set: leads        # segmento de URL: /api/data/v9.2/leads
+  logical_name: lead
+  primary_key: leadid
+  fields:
+    firstname:
+      type: string
+      max_length: 50
+    lastname:
+      type: string
+      required: true       # PENDIENTE DE CONFIRMAR con el cliente
+      max_length: 50
+    emailaddress1:
+      type: string
+      max_length: 100
+    subject:
+      type: string
+      required: true       # PENDIENTE DE CONFIRMAR con el cliente
+      max_length: 300
+    description:
+      type: memo
+      max_length: 2000
+    # Campos provisionales: nombres y valores de ejemplo, NO son los del cliente.
+    new_inquirytype:
+      type: optionset
+      options: {100000000: General, 100000001: Soporte, 100000002: Ventas}
+    new_contactmethod:
+      type: optionset
+      options: {100000000: Email, 100000001: Telefono}
+    new_source:
+      type: optionset
+      options: {100000000: Web, 100000001: Evento, 100000002: Referido}
+    # Ejemplos de los otros tipos soportados:
+    # new_consent:  {type: boolean}
+    # new_callbackat: {type: datetime}
