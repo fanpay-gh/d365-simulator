@@ -4,8 +4,9 @@ Mock en Python del **contrato HTTP** de Dynamics 365 / Dataverse que usa un form
 (token de Entra ID con client credentials + Web API de `leads`). Sirve para desarrollar y probar sin
 acceso al tenant real. No tiene UI de Dynamics, licencias ni lógica de negocio.
 
-Stack: Python ≥ 3.12 (probado con 3.13), FastAPI + uvicorn, pydantic, pytest + httpx. Sin base de datos:
-memoria, con volcado opcional a JSON.
+Dos implementaciones del mismo contrato: **Python** (FastAPI, para uso local; ≥ 3.12, probado con 3.13) y **TypeScript**
+(Netlify Functions, ver [Despliegue en Netlify](#despliegue-en-netlify-versión-typescript)). Sin base de datos:
+memoria, con volcado opcional a JSON en Python y Netlify Blobs en TypeScript.
 
 ## Arranque
 
@@ -61,33 +62,48 @@ curl -si "$B/api/data/v9.2/leads($ID)?\$select=lastname,subject" -H "Authorizati
 - Admin (sin auth): `GET /_mock/` (visor HTML), `GET /_mock/records`, `GET /_mock/requests?limit=`,
   `POST /_mock/reset` (borra registros, log y config), `GET|PATCH /_mock/config`, `/_mock/docs`.
 
-## Despliegue en Netlify
+## Despliegue en Netlify (versión TypeScript)
 
-Sigue el patrón de `mock-payment-server`: una función Python `netlify/functions/d365_mock.py`
-(`handler(event, context)`) que ejecuta la app FastAPI en proceso, más `netlify.toml` con `PYTHON_VERSION`,
-redirects (`/:tenant/oauth2/v2.0/token`, `/api/data/*`, `/_mock/*`) hacia la función y `requirements.txt`.
-`public/index.html` es la página de inicio.
+Netlify Functions no ejecuta Python, así que el despliegue usa un **port a TypeScript** del mismo contrato
+(`src/*.ts`, que reutiliza el mismo `schema.yaml`). La versión Python (`app/`) sigue siendo válida para uso local.
+
+- `netlify/functions/d365-mock.ts`: función (API moderna `Request` → `Response`). Declara sus rutas en
+  `export const config = { path: [...] }`: `/:tenant/oauth2/v2.0/token`, `/api/data/*`, `/_mock` y `/_mock/*`.
+- `netlify.toml`: `NODE_VERSION=20`, esbuild e `included_files = ["schema.yaml"]`. `public/index.html` es la página de inicio.
+- **Persistencia con Netlify Blobs**: las instancias de la función no comparten memoria (en `netlify dev` ni siquiera
+  entre dos requests seguidos), así que registros, log de requests y `/_mock/config` se guardan en un blob y se
+  rehidratan en cada request. Es *last-writer-wins*: suficiente para un mock, no para concurrencia alta.
+
+```bash
+npm install
+npm test                 # vitest: contract tests de la versión TS
+npm run dev              # servidor local en http://localhost:8000 (en memoria, sin Netlify CLI)
+npm run dev:netlify      # netlify dev: runtime real de funciones + Blobs locales
+```
+
+Pasos de despliegue:
 
 1. Conecta el repo en Netlify (publish `public`, functions `netlify/functions`; ya está en `netlify.toml`).
 2. Define en *Site settings → Environment variables*: `MOCK_TENANT_ID`, `MOCK_CLIENT_ID`, `MOCK_CLIENT_SECRET`,
-   `TOKEN_TTL_SECONDS` y, recomendado, `MOCK_BASE_URL=https://<tu-sitio>.netlify.app`.
-   Si falta `MOCK_BASE_URL`, el mock usa el host de la primera petición que recibe la instancia; con varios
-   dominios o deploy previews el `aud` y el scope pueden no coincidir, por eso conviene fijarla.
-   En Netlify cambia las variables de la app Next.js a `https://<tu-sitio>.netlify.app` (ya es https).
-3. Vuelve a desplegar tras cambiar variables (no aplican hasta el siguiente deploy).
+   `TOKEN_TTL_SECONDS` y, opcional, `MOCK_BASE_URL`. **Si no la defines, el mock usa el origen de cada petición**
+   (`https://<sitio>.netlify.app`) como `aud` y como scope esperado (`<origen>/.default`). Fíjala si usas varios
+   dominios o deploy previews, para que `aud` y scope no cambien según el host.
+3. En la app Next.js apunta la autoridad y el recurso a `https://<sitio>.netlify.app` (ya es https).
+4. Vuelve a desplegar tras cambiar variables (no aplican hasta el siguiente deploy).
 
-Limitaciones a tener en cuenta:
+Ojo en local: `netlify dev` inyecta el `.env`. Si tu `.env` define `MOCK_BASE_URL=http://localhost:8000`, el scope
+esperado será `http://localhost:8000/.default` aunque llames a `:8888`.
 
-- **Estado efímero**: las funciones son stateless. Los registros, el log de requests y `/_mock/config` viven en la
-  memoria de la instancia (con respaldo en `/tmp`) y se pierden cuando Netlify la recicla o escala a otra instancia.
-  Es válido para pruebas puntuales, no para guardar datos. Para persistencia real haría falta Netlify Blobs u otro almacén.
-- **Soporte de Python**: la documentación y el foro de Netlify indican que Functions soporta oficialmente JavaScript,
-  TypeScript y Go, no Python. El repo `mock-payment-server` incluye además un gemelo `.js` de su función Python.
-  **Esta función no se ha desplegado ni probado en Netlify**; solo se probó con eventos simulados
-  (`tests/test_netlify.py`). Si el primer deploy muestra "No functions found" o la función no responde,
-  el siguiente paso es portar la función a TypeScript.
-- La falla `timeout` y `slow` dependen del límite de ejecución de la función (10 s por defecto en Netlify):
-  una espera mayor devolverá 502/504 de Netlify en vez de la respuesta del mock.
+Qué se verificó y qué no:
+
+- Verificado: 41 tests de vitest contra el handler; la función carga y responde bajo `netlify dev` (token → crear →
+  leer en invocaciones distintas, con Blobs locales); `tsc --noEmit` sin errores.
+- **No verificado: un despliegue real en Netlify** (requiere cuenta/sitio). Blobs en producción usa el contexto
+  que Netlify inyecta en las funciones; si el primer deploy falla al guardar, el error aparece en los logs de la
+  función (`No se pudo cargar/guardar el estado`) y el mock sigue respondiendo con estado en memoria.
+- Los timeouts de las funciones de Netlify (10 s por defecto) cortan las fallas `slow` y `timeout` largas:
+  devolverá 502/504 de Netlify en vez de la respuesta del mock.
+- El port TS no incluye `/_mock/docs` ni volcado a JSON (`MOCK_PERSIST_FILE`); la persistencia es Blobs.
 
 ## Esquema (`schema.yaml`)
 

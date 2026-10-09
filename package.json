@@ -1,0 +1,22 @@
+{
+  "name": "d365-simulator",
+  "private": true,
+  "type": "module",
+  "description": "Mock del contrato HTTP de Dynamics 365 / Dataverse (leads) para Netlify Functions",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "dev:netlify": "netlify dev",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^11.1.4",
+    "yaml": "^2.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

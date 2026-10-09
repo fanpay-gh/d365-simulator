@@ -3,35 +3,12 @@
   publish = "public"
 
 [build.environment]
-  PYTHON_VERSION = "3.12"
+  NODE_VERSION = "20"
 
 [functions]
-  # El esquema y el paquete `app` deben viajar dentro del bundle de la función
-  included_files = ["app/**", "schema.yaml"]
+  node_bundler = "esbuild"
+  # schema.yaml se lee en runtime; debe viajar dentro del bundle de la función
+  included_files = ["schema.yaml"]
 
-# Token endpoint de Entra: /{tenant}/oauth2/v2.0/token
-[[redirects]]
-  from = "/:tenant/oauth2/v2.0/token"
-  to = "/.netlify/functions/d365_mock"
-  status = 200
-  force = true
-
-# Dataverse Web API
-[[redirects]]
-  from = "/api/data/*"
-  to = "/.netlify/functions/d365_mock"
-  status = 200
-  force = true
-
-# Admin y visor
-[[redirects]]
-  from = "/_mock"
-  to = "/.netlify/functions/d365_mock"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/_mock/*"
-  to = "/.netlify/functions/d365_mock"
-  status = 200
-  force = true
+# Las rutas de la función (token de Entra, Dataverse y /_mock) se declaran en
+# `export const config = { path: [...] }` de netlify/functions/d365-mock.ts.
