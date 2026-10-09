@@ -61,6 +61,34 @@ curl -si "$B/api/data/v9.2/leads($ID)?\$select=lastname,subject" -H "Authorizati
 - Admin (sin auth): `GET /_mock/` (visor HTML), `GET /_mock/records`, `GET /_mock/requests?limit=`,
   `POST /_mock/reset` (borra registros, log y config), `GET|PATCH /_mock/config`, `/_mock/docs`.
 
+## Despliegue en Netlify
+
+Sigue el patrón de `mock-payment-server`: una función Python `netlify/functions/d365_mock.py`
+(`handler(event, context)`) que ejecuta la app FastAPI en proceso, más `netlify.toml` con `PYTHON_VERSION`,
+redirects (`/:tenant/oauth2/v2.0/token`, `/api/data/*`, `/_mock/*`) hacia la función y `requirements.txt`.
+`public/index.html` es la página de inicio.
+
+1. Conecta el repo en Netlify (publish `public`, functions `netlify/functions`; ya está en `netlify.toml`).
+2. Define en *Site settings → Environment variables*: `MOCK_TENANT_ID`, `MOCK_CLIENT_ID`, `MOCK_CLIENT_SECRET`,
+   `TOKEN_TTL_SECONDS` y, recomendado, `MOCK_BASE_URL=https://<tu-sitio>.netlify.app`.
+   Si falta `MOCK_BASE_URL`, el mock usa el host de la primera petición que recibe la instancia; con varios
+   dominios o deploy previews el `aud` y el scope pueden no coincidir, por eso conviene fijarla.
+   En Netlify cambia las variables de la app Next.js a `https://<tu-sitio>.netlify.app` (ya es https).
+3. Vuelve a desplegar tras cambiar variables (no aplican hasta el siguiente deploy).
+
+Limitaciones a tener en cuenta:
+
+- **Estado efímero**: las funciones son stateless. Los registros, el log de requests y `/_mock/config` viven en la
+  memoria de la instancia (con respaldo en `/tmp`) y se pierden cuando Netlify la recicla o escala a otra instancia.
+  Es válido para pruebas puntuales, no para guardar datos. Para persistencia real haría falta Netlify Blobs u otro almacén.
+- **Soporte de Python**: la documentación y el foro de Netlify indican que Functions soporta oficialmente JavaScript,
+  TypeScript y Go, no Python. El repo `mock-payment-server` incluye además un gemelo `.js` de su función Python.
+  **Esta función no se ha desplegado ni probado en Netlify**; solo se probó con eventos simulados
+  (`tests/test_netlify.py`). Si el primer deploy muestra "No functions found" o la función no responde,
+  el siguiente paso es portar la función a TypeScript.
+- La falla `timeout` y `slow` dependen del límite de ejecución de la función (10 s por defecto en Netlify):
+  una espera mayor devolverá 502/504 de Netlify en vez de la respuesta del mock.
+
 ## Esquema (`schema.yaml`)
 
 Define entity set, nombre lógico, clave primaria y campos (`string`, `memo`, `optionset`, `boolean`, `datetime`)

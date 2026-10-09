@@ -1,0 +1,37 @@
+[build]
+  functions = "netlify/functions"
+  publish = "public"
+
+[build.environment]
+  PYTHON_VERSION = "3.12"
+
+[functions]
+  # El esquema y el paquete `app` deben viajar dentro del bundle de la función
+  included_files = ["app/**", "schema.yaml"]
+
+# Token endpoint de Entra: /{tenant}/oauth2/v2.0/token
+[[redirects]]
+  from = "/:tenant/oauth2/v2.0/token"
+  to = "/.netlify/functions/d365_mock"
+  status = 200
+  force = true
+
+# Dataverse Web API
+[[redirects]]
+  from = "/api/data/*"
+  to = "/.netlify/functions/d365_mock"
+  status = 200
+  force = true
+
+# Admin y visor
+[[redirects]]
+  from = "/_mock"
+  to = "/.netlify/functions/d365_mock"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/_mock/*"
+  to = "/.netlify/functions/d365_mock"
+  status = 200
+  force = true
