@@ -53,6 +53,100 @@ curl -si -X POST $B/api/data/v9.2/leads -H "Authorization: Bearer $TOKEN" -H "Co
 curl -si "$B/api/data/v9.2/leads($ID)?\$select=lastname,subject" -H "Authorization: Bearer $TOKEN"
 ```
 
+## Formulario de contacto (`leads`)
+
+Lo que envía el formulario web de contacto (app Next.js `gap-internal`, ruta `POST /api/contact`) al crear un lead.
+Todos los campos están en `schema.yaml`; la app manda **solo estos** y el mock rechaza con 400 cualquier otro.
+
+| Campo del formulario | Campo lógico | Tipo | Requerido | Máx. | Nota |
+|---|---|---|---|---|---|
+| Name | `firstname` + `lastname` | string | `lastname` sí | 50 y 50 | La primera palabra va a `firstname` y el resto a `lastname`. Con una sola palabra solo se envía `lastname` |
+| Email | `emailaddress1` | string | no | 100 | |
+| Message | `description` | memo | no | 2000 | |
+| (fijo) | `subject` | string | sí | 300 | La app envía `"Website contact form"` |
+| Organization type | `new_organizationtype` | optionset | no | | Provisional |
+| Industry and size | `new_industrysize` | optionset | no | | Provisional |
+| How did you hear about us? | `new_source` | optionset | no | | Textos definitivos; códigos provisionales |
+
+El checkbox de términos **no se envía**: el esquema no tiene un campo para él.
+
+Los option sets se envían como **entero**, nunca como texto (`100000001`, no `"100000001"`):
+
+| Campo | Código | Texto |
+|---|---|---|
+| `new_organizationtype` | `100000000` | Enterprise |
+| | `100000001` | Nonprofit |
+| | `100000002` | Public sector |
+| `new_industrysize` | `100000000` | 1 to 50 people |
+| | `100000001` | 51 to 500 people |
+| | `100000002` | More than 500 people |
+| `new_source` | `100000000` | Referred by colleague |
+| | `100000001` | Conference or event |
+| | `100000002` | Genius Institute research |
+| | `100000003` | Online search |
+| | `100000004` | Social media |
+| | `100000005` | Other |
+
+`new_inquirytype` y `new_contactmethod` siguen en el esquema pero el formulario no los usa.
+
+### Crear un lead (POST)
+
+Con `$B`, `$T` y `$TOKEN` como en [Las tres llamadas](#las-tres-llamadas):
+
+```bash
+curl -si -X POST $B/api/data/v9.2/leads \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -H "OData-MaxVersion: 4.0" -H "OData-Version: 4.0" \
+  -d '{
+    "firstname": "Grace",
+    "lastname": "Murray Hopper",
+    "emailaddress1": "grace@example.com",
+    "subject": "Website contact form",
+    "description": "Tell us what you are facing...",
+    "new_organizationtype": 100000001,
+    "new_industrysize": 100000002,
+    "new_source": 100000001
+  }'
+```
+
+Respuesta: `204 No Content`, sin cuerpo, con la cabecera `OData-EntityId: $B/api/data/v9.2/leads(<guid>)`.
+Para quedarte con el id y usarlo después:
+
+```bash
+ID=$(curl -si -X POST $B/api/data/v9.2/leads -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"lastname":"Lovelace","subject":"Website contact form"}' \
+  | grep -i '^odata-entityid' | sed -E 's/.*leads\(([^)]+)\).*/\1/' | tr -d '\r')
+```
+
+### Borrar un lead (DELETE)
+
+```bash
+curl -si -X DELETE "$B/api/data/v9.2/leads($ID)" -H "Authorization: Bearer $TOKEN"
+```
+
+Respuesta: `204 No Content`. Un id que no existe da `404` (`lead With Id = <guid> Does Not Exist`, `0x80040217`) y un
+id mal formado da `400` (`Unrecognized Guid format.`).
+
+En Netlify el estado vive en Blobs (*last-writer-wins*) y las instancias pueden ver datos un poco desactualizados: un
+`DELETE` justo después del `POST`, o del listado, puede dar `404` aunque el lead exista. Si pasa, reintenta pasados unos
+segundos (en una prueba el segundo intento dio `204`).
+
+Para encontrar el `leadid` de un lead: `GET $B/_mock/records` (sin auth) o el visor `GET $B/_mock/`.
+Para borrarlos **todos**, `POST $B/_mock/reset`, que también borra el log de requests y la configuración; es destructivo,
+así que para limpiar solo los de prueba es mejor un `DELETE` por id.
+
+### Errores de validación (400)
+
+Formato `{"error":{"code":"0x0","message":"..."}}`. Los mensajes que produce el formulario si algo no cuadra:
+
+| Causa | `message` |
+|---|---|
+| Falta `lastname` o `subject` | `The attribute 'lastname' of the 'lead' entity is required.` |
+| Campo que no existe en el esquema | `An error occurred while validating input parameters: Invalid property 'x' was found in entity 'Microsoft.Dynamics.CRM.lead'.` |
+| Entero fuera de lista | `The option value 5 is not valid for the attribute 'new_source'.` |
+| Texto en vez de entero | `Property 'new_source' expects an integer option value but got string.` |
+| Texto más largo que `max_length` | `The length of the 'lastname' attribute of the 'lead' entity exceeded the maximum allowed length of '50'.` |
+
 ## Endpoints
 
 - `POST /{tenant}/oauth2/v2.0/token`
@@ -81,6 +175,15 @@ npm run dev              # servidor local en http://localhost:8000 (en memoria, 
 npm run dev:netlify      # netlify dev: runtime real de funciones + Blobs locales
 ```
 
+### Instancia desplegada
+
+URL base: **https://d365-simulator.netlify.app** (úsala como `B` en los ejemplos: `B=https://d365-simulator.netlify.app`).
+
+- Visor de registros: <https://d365-simulator.netlify.app/_mock/>
+- Registros en JSON (sin auth): <https://d365-simulator.netlify.app/_mock/records>
+- Log de requests: <https://d365-simulator.netlify.app/_mock/requests?limit=20>
+- Configuración y fallas: `GET|PATCH /_mock/config`
+
 Pasos de despliegue:
 
 1. Conecta el repo en Netlify (publish `public`, functions `netlify/functions`; ya está en `netlify.toml`).
@@ -96,7 +199,7 @@ esperado será `http://localhost:8000/.default` aunque llames a `:8888`.
 
 Qué se verificó y qué no:
 
-- Verificado: 41 tests de vitest contra el handler; la función carga y responde bajo `netlify dev` (token → crear →
+- Verificado: 45 tests de vitest contra el handler (53 en la suite Python); la función carga y responde bajo `netlify dev` (token → crear →
   leer en invocaciones distintas, con Blobs locales); `tsc --noEmit` sin errores.
 - **No verificado: un despliegue real en Netlify** (requiere cuenta/sitio). Blobs en producción usa el contexto
   que Netlify inyecta en las funciones; si el primer deploy falla al guardar, el error aparece en los logs de la
@@ -109,7 +212,9 @@ Qué se verificó y qué no:
 
 Define entity set, nombre lógico, clave primaria y campos (`string`, `memo`, `optionset`, `boolean`, `datetime`)
 con `required`, `max_length` y `options`. **La obligatoriedad (`lastname` y `subject` requeridos), las longitudes y los
-tres campos `new_*` con sus valores son provisionales: deben alinearse con lo que confirme el cliente.**
+campos `new_*` son provisionales: deben alinearse con lo que confirme el cliente. Son definitivos solo los textos de `new_source`
+(salen del diseño); nombres y códigos del resto, incluidos `new_organizationtype` y `new_industrysize`, no.**
+Detalle de los campos del formulario en [Formulario de contacto](#formulario-de-contacto-leads).
 Las longitudes por defecto son de memoria y no se verificaron contra un tenant real.
 
 ## Inyección de fallas
