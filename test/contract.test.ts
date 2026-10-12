@@ -103,6 +103,25 @@ describe("Dataverse: autenticación", () => {
   });
 });
 
+describe("Dataverse: campos del formulario web", () => {
+  const FORM = { new_organizationtype: 100000002, new_industrysize: 100000001, new_source: 100000005 };
+
+  it("acepta los tres option sets con valores válidos", async () => {
+    const t = setup();
+    const r = await t.call(`${API}/leads`, { method: "POST", json: { ...VALID_LEAD, ...FORM }, headers: await t.auth() });
+    expect(r.status).toBe(204);
+    expect((await (await t.call(`${BASE}/_mock/records`)).json()).count).toBe(1);
+  });
+
+  it.each(["new_organizationtype", "new_industrysize", "new_source"])("rechaza %s fuera de lista con 400", async (field) => {
+    const t = setup();
+    const r = await t.call(`${API}/leads`, { method: "POST", json: { ...VALID_LEAD, ...FORM, [field]: 100000006 }, headers: await t.auth() });
+    expect(r.status).toBe(400);
+    expect((await r.json()).error.message).toContain(`not valid for the attribute '${field}'`);
+    expect((await (await t.call(`${BASE}/_mock/records`)).json()).count).toBe(0);
+  });
+});
+
 describe("Dataverse: validación de esquema", () => {
   const { lastname: _l, ...sinLastname } = VALID_LEAD;
   const { subject: _s, ...sinSubject } = VALID_LEAD;

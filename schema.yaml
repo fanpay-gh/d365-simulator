@@ -23,16 +23,30 @@ entity:
     description:
       type: memo
       max_length: 2000
-    # Campos provisionales: nombres y valores de ejemplo, NO son los del cliente.
+    # Campos provisionales: nombres y valores de ejemplo, NO son los del cliente (new_inquirytype, new_contactmethod).
     new_inquirytype:
       type: optionset
       options: {100000000: General, 100000001: Soporte, 100000002: Ventas}
     new_contactmethod:
       type: optionset
       options: {100000000: Email, 100000001: Telefono}
+    # Campos del formulario web de contacto. Textos de new_source: definitivos (salen del diseño).
+    # Nombres, códigos y textos de new_organizationtype / new_industrysize: provisionales.
+    new_organizationtype:
+      type: optionset
+      options: {100000000: Enterprise, 100000001: Nonprofit, 100000002: Public sector}
+    new_industrysize:
+      type: optionset
+      options: {100000000: 1 to 50 people, 100000001: 51 to 500 people, 100000002: More than 500 people}
     new_source:
       type: optionset
-      options: {100000000: Web, 100000001: Evento, 100000002: Referido}
+      options:
+        100000000: Referred by colleague
+        100000001: Conference or event
+        100000002: Genius Institute research
+        100000003: Online search
+        100000004: Social media
+        100000005: Other
     # Ejemplos de los otros tipos soportados:
     # new_consent:  {type: boolean}
     # new_callbackat: {type: datetime}

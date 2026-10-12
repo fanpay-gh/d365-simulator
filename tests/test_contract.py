@@ -109,6 +109,25 @@ def test_tampered_signature_rejected(client, token):
     assert r.status_code == 401
 
 
+# ---------- Dataverse: campos del formulario web ----------
+
+FORM_FIELDS = {"new_organizationtype": 100000002, "new_industrysize": 100000001, "new_source": 100000005}
+
+
+def test_create_accepts_form_optionsets(client, auth):
+    r = client.post(f"{API}/leads", json={**VALID_LEAD, **FORM_FIELDS}, headers=auth)
+    assert r.status_code == 204
+    assert client.get("/_mock/records").json()["count"] == 1
+
+
+@pytest.mark.parametrize("field", list(FORM_FIELDS))
+def test_create_rejects_form_optionset_out_of_list(client, auth, field):
+    r = client.post(f"{API}/leads", json={**VALID_LEAD, **FORM_FIELDS, field: 100000006}, headers=auth)
+    assert r.status_code == 400
+    assert f"not valid for the attribute '{field}'" in r.json()["error"]["message"]
+    assert client.get("/_mock/records").json()["count"] == 0
+
+
 # ---------- Dataverse: validación de esquema ----------
 
 @pytest.mark.parametrize("payload,fragment", [
